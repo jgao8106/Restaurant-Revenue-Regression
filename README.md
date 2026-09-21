@@ -29,4 +29,4 @@ The goal of this project was to build and evaluate regression models that estima
 
 ## Tools & Skills
 
-R, Multiple Linear Regression, Statistical Analysis, Data Visualization, Model Evaluation
+R, Multiple Linear Regression, Feature Engineering, Train/Test Validation, RMSE/MSE Evaluation
