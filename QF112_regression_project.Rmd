@@ -1,0 +1,277 @@
+---
+title: "QF112 Regression Project"
+author: "Jeffrey Gao"
+date: "5/3/2026"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction of the Project
+
+The goal of this project is to build a multiple linear regression model that predicts the monthly revenue of restaurants. The data file used is `restaurant_student_data.csv`, and the response variable is `monthly_revenue`. Extra variables I created were made directly from those variables,
+such as squared terms and interaction terms.
+
+# Setting the Data and Train/Testing It
+
+First, I loaded the restaurant data into R. Then I made an 80% training set and a 20% testing set. The training set is used to build the model, while the testing set is used to check how well the model predicts new data. I used `set.seed(123)` so that the split stays the same every time the file is run.
+
+```{r}
+restaurant_data <- read.csv("restaurant_student_data.csv")
+
+set.seed(123)
+
+train_practice <- sample(1:nrow(restaurant_data), size = 0.8 * nrow(restaurant_data))
+traindata <- restaurant_data[train_practice, ]
+testdata <- restaurant_data[-train_practice, ]
+
+nrow(traindata)
+nrow(testdata)
+```
+
+# Data Summary
+
+Before building the model, I looked at the structure and summary of the dataset. This helps show the response variable and the predictors available for the model.
+
+```{r}
+str(restaurant_data)
+summary(restaurant_data)
+```
+
+The dataset has restaurant variables such as location type, cuisine type, delivery, average daily walk-ins, seating capacity, average check size, competitors nearby, weekly reservations, website visits, and monthly revenue. Since `monthly_revenue` is the variable being predicted, it is the dependent variable in the regression.
+
+# Boxplots
+
+I used boxplots to compare monthly revenue across the categorical variables. This is useful because categorical variables can change the average level of revenue.
+
+```{r}
+par(mfrow = c(1,3))
+boxplot(monthly_revenue ~ location_type, data = restaurant_data,
+        main = "Revenue by Location", xlab = "Location Type", ylab = "Monthly Revenue")
+boxplot(monthly_revenue ~ cuisine_type, data = restaurant_data,
+        main = "Revenue by Cuisine", xlab = "Cuisine Type", ylab = "Monthly Revenue")
+boxplot(monthly_revenue ~ delivery, data = restaurant_data,
+        main = "Revenue by Delivery", xlab = "Delivery", ylab = "Monthly Revenue")
+```
+
+The boxplots show that monthly revenue changes depending on location type, cuisine type, and whether the restaurant offers delivery. Because of this, I kept these categorical variables in the model.
+
+# Data Analysis
+
+Next, I looked at the distribution of monthly revenue and the relationships between monthly revenue and some important numeric predictors.
+
+```{r}
+hist(restaurant_data$monthly_revenue,
+     main = "Distribution of Monthly Revenue",
+     xlab = "Monthly Revenue")
+
+plot(restaurant_data$average_daily_walk_ins, restaurant_data$monthly_revenue,
+     main = "Revenue vs Average Daily Walk-Ins",
+     xlab = "Average Daily Walk-Ins", ylab = "Monthly Revenue")
+
+plot(restaurant_data$avg_check, restaurant_data$monthly_revenue,
+     main = "Revenue vs Average Check",
+     xlab = "Average Check", ylab = "Monthly Revenue")
+
+plot(restaurant_data$seating_capacity, restaurant_data$monthly_revenue,
+     main = "Revenue vs Seating Capacity",
+     xlab = "Seating Capacity", ylab = "Monthly Revenue")
+```
+
+Average daily walk-ins, average check, and seating capacity seem important because they are directly connected to how much money a restaurant can make. I also considered squared terms for average daily walk-ins and average check because the relationship did not look perfectly linear.
+
+# Multicollinearity Check
+
+I checked correlations between the numeric predictors. Very high correlation between predictors can cause multicollinearity, which means some variables may be repeating the same information.
+
+```{r}
+numeric_vars <- restaurant_data[, c("average_daily_walk_ins", "monthly_marketing_spend",
+                                    "seating_capacity", "avg_check", "star_rating",
+                                    "years_open", "competitors_nearby", "website_visits",
+                                    "weekly_reservations", "labor_hours", "number_of_tables",
+                                    "table_turnover", "food_cost_percent", "avg_ticket_time",
+                                    "catering_inquiries")]
+
+correlation_matrix <- cor(numeric_vars)
+print(correlation_matrix)
+
+highcorrelation <- which(abs(correlation_matrix) > 0.8 & abs(correlation_matrix) < 1,
+                         arr.ind = TRUE)
+
+if (nrow(highcorrelation) > 0) {
+  cat("Potential multicollinearity was found:\n")
+  apply(highcorrelation, 1, function(row) {
+    cat(rownames(correlation_matrix)[row[1]], "and",
+        colnames(correlation_matrix)[row[2]],
+        "with correlation", correlation_matrix[row[1], row[2]], "\n")
+  })
+} else {
+  cat("No serious multicollinearity was found.\n")
+}
+```
+
+This step was used to understand whether the numeric variables were strongly related to each other. I did not remove variables only because of correlation, but I used this information when deciding how complicated the final model should be.
+
+# Model 1: Basic Model
+
+I first made a basic multiple linear regression model using most of the available predictors. This gave me a starting point to compare against later models.
+
+```{r}
+model1 <- lm(
+  monthly_revenue ~ location_type + cuisine_type + delivery +
+    average_daily_walk_ins + monthly_marketing_spend + seating_capacity +
+    avg_check + star_rating + years_open + competitors_nearby +
+    website_visits + weekly_reservations + labor_hours + number_of_tables +
+    table_turnover + food_cost_percent + avg_ticket_time + catering_inquiries,
+  data = traindata
+)
+
+summary(model1)
+```
+
+# Model 2: Model with Transformations
+
+The second model adds squared terms for average daily walk-ins and average check. These transformations are allowed because they are made directly from variables in the dataset.
+
+```{r}
+traindata$walk_ins_2 <- traindata$average_daily_walk_ins^2
+testdata$walk_ins_2 <- testdata$average_daily_walk_ins^2
+
+traindata$avg_check_2 <- traindata$avg_check^2
+testdata$avg_check_2 <- testdata$avg_check^2
+
+model2 <- lm(
+  monthly_revenue ~ location_type + cuisine_type + delivery +
+    average_daily_walk_ins + walk_ins_2 + seating_capacity +
+    avg_check + avg_check_2 + competitors_nearby + years_open +
+    weekly_reservations + website_visits + food_cost_percent,
+  data = traindata
+)
+
+summary(model2)
+```
+
+# Model 3: Final Interaction Model
+
+The final model includes variables that make business sense and adds interaction terms. For example, the effect of average daily walk-ins may depend on location type, and the effect of average check may depend on cuisine type or location type. Website visits and weekly reservations may also depend on whether delivery is offered.
+
+```{r}
+model3 <- lm(
+  monthly_revenue ~ location_type + cuisine_type + delivery +
+    average_daily_walk_ins + walk_ins_2 + seating_capacity +
+    avg_check + avg_check_2 + competitors_nearby + years_open +
+    weekly_reservations + website_visits + food_cost_percent +
+    average_daily_walk_ins:location_type +
+    avg_check:cuisine_type +
+    avg_check:location_type +
+    weekly_reservations:delivery +
+    website_visits:delivery +
+    avg_check:food_cost_percent,
+  data = traindata
+)
+
+summary(model3)
+```
+
+# RMSE and MSE
+
+I used MSE and RMSE to compare the models. The project says the final model will be evaluated using mean squared error, so MSE is the most important comparison. RMSE is also useful because it is in the same units as monthly revenue.
+
+```{r}
+MSE <- function(actual, predicted) {
+  mean((actual - predicted)^2)
+}
+
+RMSE <- function(actual, predicted) {
+  sqrt(mean((actual - predicted)^2))
+}
+
+pred1 <- predict(model1, newdata = testdata)
+pred2 <- predict(model2, newdata = testdata)
+pred3 <- predict(model3, newdata = testdata)
+
+mse1 <- MSE(testdata$monthly_revenue, pred1)
+mse2 <- MSE(testdata$monthly_revenue, pred2)
+mse3 <- MSE(testdata$monthly_revenue, pred3)
+
+rmse1 <- RMSE(testdata$monthly_revenue, pred1)
+rmse2 <- RMSE(testdata$monthly_revenue, pred2)
+rmse3 <- RMSE(testdata$monthly_revenue, pred3)
+
+model_comparison <- data.frame(
+  Model = c("Basic Model", "Transformation Model", "Final Interaction Model"),
+  Test_MSE = c(mse1, mse2, mse3),
+  Test_RMSE = c(rmse1, rmse2, rmse3)
+)
+
+model_comparison
+```
+
+The final interaction model was chosen because it uses important restaurant variables, includes reasonable transformations, and allows important relationships to change depending on restaurant type. It is still a multiple linear regression model and uses only `lm`.
+
+# Final Model on the Full Dataset
+
+After choosing the final model, I fit the same model on the full dataset. This is the model structure used in the submitted `predict_revenue` function.
+
+```{r}
+restaurant_data$walk_ins_2 <- restaurant_data$average_daily_walk_ins^2
+restaurant_data$avg_check_2 <- restaurant_data$avg_check^2
+
+finalmodel <- lm(
+  monthly_revenue ~ location_type + cuisine_type + delivery +
+    average_daily_walk_ins + walk_ins_2 + seating_capacity +
+    avg_check + avg_check_2 + competitors_nearby + years_open +
+    weekly_reservations + website_visits + food_cost_percent +
+    average_daily_walk_ins:location_type +
+    avg_check:cuisine_type +
+    avg_check:location_type +
+    weekly_reservations:delivery +
+    website_visits:delivery +
+    avg_check:food_cost_percent,
+  data = restaurant_data
+)
+
+summary(finalmodel)
+```
+
+# Testing the Function File
+
+The project also requires a separate `.R` file with a function named `predict_revenue`. I tested the function on the example new data file to make sure it returns predictions.
+
+```{r}
+source("predict_revenue.R")
+new_data_example <- read.csv("new_data_example.csv")
+
+example_predictions <- predict_revenue(restaurant_data, new_data_example)
+example_predictions
+
+is.numeric(example_predictions)
+length(example_predictions)
+```
+
+The function returns a numeric vector, and the number of predictions matches the number of rows in the new data file. This means the function follows the required format and should work on new unseen data with the same predictor columns.
+
+# Summary
+
+In conclusion, I built a multiple linear regression model to predict restaurant monthly revenue. I started with a train/test split, looked at summaries, boxplots, plots, and correlations, and then compared multiple models. The final model uses categorical variables, squared terms, and interaction terms while staying inside the `lm` framework. The final model includes location type and cuisine type because restaurant revenue may differ by market and restaurant category. It includes seating capacity, competitors nearby, and years open as general business characteristics. The squared terms allow curved relationships for walk-ins and average check. The interaction terms allow the impact of walk-ins, average check, reservations, website visits, and food cost percentage to depend on restaurant context.
+
+# Test the Submitted Function
+
+The submitted `.R` file contains one function named `predict_revenue`. The function fits the final model on `old_data` and returns predictions for `new_data`.
+
+```{r}
+source("predict_revenue.R")
+new_data_example <- read.csv("new_data_example.csv")
+
+example_predictions <- predict_revenue(restaurant_data, new_data_example)
+example_predictions
+
+is.numeric(example_predictions)
+length(example_predictions)
+```
+
+The function returns a numeric vector with one prediction for each row of the new dataset.
